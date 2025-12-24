@@ -1,175 +1,85 @@
 name: Auto Sync Dictionary
 
 on:
-  # Trigger on schedule every 5 minutes
+  # Run every hour
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 * * * *'
   
-  # Also trigger on push to main
-  push:
-    branches: [ main ]
-    paths:
-      - 'dictionary.json'
-      - 'dictionaries/**'
+  # Also run on issue creation
+  issues:
+    types: [opened]
   
-  # And on workflow dispatch (manual trigger)
+  # Manual trigger
   workflow_dispatch:
 
 jobs:
-  sync-dictionary:
+  sync:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write
-      pull-requests: write
-
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-
-      - name: Create sync script
+      
+      - name: Process dictionary
         run: |
-          cat > sync.js << 'EOF'
-          const fs = require('fs');
-          const path = require('path');
+          # Create dictionaries directory
+          mkdir -p dictionaries
           
-          // Read all individual word files
-          const dictionariesDir = path.join(__dirname, 'dictionaries');
-          const words = [];
-          
-          if (fs.existsSync(dictionariesDir)) {
-            const files = fs.readdirSync(dictionariesDir);
+          # If issue was created, process it
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "Processing new issue..."
             
-            files.forEach(file => {
-              if (file.endsWith('.json')) {
-                try {
-                  const content = fs.readFileSync(path.join(dictionariesDir, file), 'utf8');
-                  const word = JSON.parse(content);
-                  words.push(word);
-                } catch (error) {
-                  console.error(`Error reading ${file}:`, error);
-                }
-              }
-            });
-          }
-          
-          // Create combined dictionary
-          const dictionary = {
-            words: words,
-            lastSync: new Date().toISOString(),
-            totalWords: words.length,
-            version: '2.0',
-            syncSource: 'github-actions'
-          };
-          
-          // Write to dictionary.json
-          fs.writeFileSync(
-            'dictionary.json',
-            JSON.stringify(dictionary, null, 2)
-          );
-          
-          // Also create a JSONP file for web access
-          const jsonpContent = `window.dictionaryData = ${JSON.stringify(dictionary)};`;
-          fs.writeFileSync('dictionary.js', jsonpContent);
-          
-          console.log(`Synced ${words.length} words to dictionary.json`);
-          EOF
-
-      - name: Run sync script
-        run: node sync.js
-
-      - name: Check for changes
-        id: changes
-        run: |
-          git diff --name-only dictionary.json || true
-          if git diff --quiet dictionary.json; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            # Extract word data from issue body
+            echo "${{ github.event.issue.body }}" > new_word.json
+            
+            # Create word file
+            WORD_NAME=$(echo "${{ github.event.issue.title }}" | sed 's/\[DICT\]//' | xargs)
+            FILENAME=$(echo "$WORD_NAME" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+            
+            mv new_word.json "dictionaries/${FILENAME}.json"
+            
+            echo "Created: dictionaries/${FILENAME}.json"
           fi
-
-      - name: Commit and push if changed
-        if: steps.changes.outputs.has_changes == 'true'
+          
+          # Combine all words into dictionary.json
+          echo '{"words": [], "lastSync": "'$(date -Iseconds)'", "totalWords": 0}' > combined.json
+          
+          # Find all word files
+          if [ -d "dictionaries" ]; then
+            for file in dictionaries/*.json; do
+              if [ -f "$file" ]; then
+                jq '.words += [input]' combined.json "$file" > temp.json
+                mv temp.json combined.json
+              fi
+            done
+          fi
+          
+          # Update counts
+          COUNT=$(jq '.words | length' combined.json)
+          jq ".totalWords = $COUNT" combined.json > dictionary.json
+          
+          echo "Created dictionary.json with $COUNT words"
+      
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dictionary.json dictionary.js
-          git commit -m "🤖 Auto-sync dictionary: $(date '+%Y-%m-%d %H:%M:%S')"
-          git push
-
-      - name: Create sync report
-        if: always()
-        run: |
-          echo "## Dictionary Sync Report" >> $GITHUB_STEP_SUMMARY
-          echo "**Time:** $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "**Words Synced:** $(jq '.words | length' dictionary.json)" >> $GITHUB_STEP_SUMMARY
-          echo "**Last Sync:** $(jq -r '.lastSync' dictionary.json)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Recent Words" >> $GITHUB_STEP_SUMMARY
-          echo "| Word | Part of Speech | Difficulty |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|---------------|------------|" >> $GITHUB_STEP_SUMMARY
-          jq -r '.words[-5:] | .[] | "| \(.word) | \(.partOfSpeech) | \(.difficulty) |"' dictionary.json >> $GITHUB_STEP_SUMMARY
-
-  process-webhook:
-    needs: sync-dictionary
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    
-    steps:
-      - name: Trigger GitHub Pages build
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: rebuild-pages
-          repository: ${{ github.repository }}
-
-  webhook-receiver:
-    # This job handles incoming webhooks from the frontend
-    runs-on: ubuntu-latest
-    if: github.event_name == 'repository_dispatch'
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Process incoming data
-        env:
-          INCOMING_DATA: ${{ toJSON(github.event.client_payload) }}
-        run: |
-          echo "Processing incoming dictionary data..."
-          mkdir -p incoming_data
-          echo "$INCOMING_DATA" > incoming_data/update_$(date +%s).json
           
-          # Extract words from incoming data
-          if [ -f "dictionary.json" ]; then
-            jq '.words += $newWords | .lastSync = now | .totalWords = (.words | length)' \
-              --argjson newWords "$INCOMING_DATA" \
-              dictionary.json > dictionary_new.json
-            
-            mv dictionary_new.json dictionary.json
-          else
-            echo '{"words": $newWords, "lastSync": now, "totalWords": ($newWords | length), "version": "1.0"}' \
-              --argjson newWords "$INCOMING_DATA" > dictionary.json
-          fi
-
-      - name: Commit updates
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add dictionary.json dictionaries/
+          
           if git diff --staged --quiet; then
-            echo "No changes to commit"
+            echo "No changes"
           else
-            git commit -m "📝 Update from web interface"
+            git commit -m "🤖 Auto-sync dictionary"
             git push
           fi
