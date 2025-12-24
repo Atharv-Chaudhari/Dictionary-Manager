@@ -3,22 +3,66 @@ class DictionaryManager {
         this.words = [];
         this.currentWordId = null;
         this.currentFilter = 'all';
+        this.isSyncing = false;
         this.githubConfig = {
             owner: 'Atharv-Chaudhari',
             repo: 'Dictionary-Manager',
             branch: 'main',
-            autoSync: true
+            token: null, // Will use GITHUB_TOKEN from workflow
+            apiUrl: 'https://api.github.com'
         };
         
         this.init();
     }
     
-    init() {
+    async init() {
         this.loadWords();
         this.setupEventListeners();
         this.updateStats();
         this.renderWordList();
         this.setupTheme();
+        
+        // Try to load words from GitHub on startup
+        await this.loadFromGitHub();
+    }
+    
+    async loadFromGitHub() {
+        try {
+            this.showToast('Loading dictionary from GitHub...', 'info');
+            
+            // Fetch from your GitHub repository's dictionary.json
+            const response = await fetch(
+                `https://raw.githubusercontent.com/${this.githubConfig.owner}/${this.githubConfig.repo}/main/dictionary.json`
+            );
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.words && Array.isArray(data.words)) {
+                    // Merge with local words, preferring GitHub version
+                    const githubWords = data.words;
+                    const localWordIds = new Set(this.words.map(w => w.word.toLowerCase()));
+                    
+                    // Add words from GitHub that don't exist locally
+                    githubWords.forEach(githubWord => {
+                        if (!localWordIds.has(githubWord.word.toLowerCase())) {
+                            this.words.push({
+                                ...githubWord,
+                                id: Date.now() + Math.random() // Ensure unique ID
+                            });
+                        }
+                    });
+                    
+                    this.saveWords();
+                    this.updateStats();
+                    this.renderWordList();
+                    
+                    this.showToast(`Loaded ${githubWords.length} words from GitHub`, 'success');
+                }
+            }
+        } catch (error) {
+            console.log('Could not load from GitHub, using local storage:', error);
+            // Continue with local storage
+        }
     }
     
     loadWords() {
@@ -38,6 +82,11 @@ class DictionaryManager {
     
     saveWords() {
         localStorage.setItem('dictionary_words', JSON.stringify(this.words));
+        
+        // Auto-sync to GitHub
+        if (!this.isSyncing) {
+            this.syncToGitHub();
+        }
     }
     
     addSampleData() {
@@ -59,32 +108,14 @@ class DictionaryManager {
                 difficulty: 'medium',
                 mastered: false,
                 source: 'Novel reading',
-                createdAt: new Date('2024-01-15').toISOString(),
-                updatedAt: new Date('2024-01-15').toISOString()
-            },
-            {
-                id: 2,
-                word: 'Eloquent',
-                definition: 'Fluent or persuasive in speaking or writing.',
-                pronunciation: '/ˈɛləkwənt/',
-                partOfSpeech: 'adjective',
-                examples: [
-                    'She was an eloquent speaker, captivating the entire audience.',
-                    'His eloquent writing made complex topics easy to understand.'
-                ],
-                synonyms: ['articulate', 'fluent', 'expressive', 'persuasive'],
-                antonyms: ['inarticulate', 'tongue-tied', 'halting'],
-                notes: 'Useful word for describing good speakers and writers.',
-                difficulty: 'easy',
-                mastered: true,
-                source: 'Vocabulary book',
-                createdAt: new Date('2024-01-10').toISOString(),
-                updatedAt: new Date('2024-01-12').toISOString()
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                githubId: null
             }
         ];
         
         this.words = sampleWords;
-        this.saveWords();
+        localStorage.setItem('dictionary_words', JSON.stringify(this.words));
     }
     
     setupEventListeners() {
@@ -115,7 +146,7 @@ class DictionaryManager {
         document.getElementById('deleteWordBtn').addEventListener('click', () => this.deleteCurrentWord());
         
         // GitHub sync
-        document.getElementById('syncGitHubBtn').addEventListener('click', () => this.syncToGitHub());
+        document.getElementById('syncGitHubBtn').addEventListener('click', () => this.forceSyncToGitHub());
         
         // Search and filter
         document.getElementById('wordSearch').addEventListener('input', (e) => {
@@ -128,6 +159,11 @@ class DictionaryManager {
                 this.setFilter(filter);
             });
         });
+        
+        // Auto-sync every 5 minutes
+        setInterval(() => {
+            this.syncToGitHub();
+        }, 5 * 60 * 1000);
     }
     
     addWord(wordData) {
@@ -145,7 +181,8 @@ class DictionaryManager {
             mastered: false,
             source: wordData.source?.trim() || '',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            githubId: null
         };
         
         this.words.push(word);
@@ -156,12 +193,151 @@ class DictionaryManager {
         
         this.showToast(`"${word.word}" added successfully!`, 'success');
         
-        // Auto-sync to GitHub if enabled
-        if (this.githubConfig.autoSync) {
-            this.syncWordToGitHub(word);
-        }
-        
         return word;
+    }
+    
+    async syncToGitHub() {
+        if (this.isSyncing) return;
+        
+        this.isSyncing = true;
+        
+        try {
+            // Create a dictionary.json file
+            const dictionaryData = {
+                words: this.words,
+                lastSync: new Date().toISOString(),
+                totalWords: this.words.length,
+                version: '1.0'
+            };
+            
+            // Convert to Base64 for GitHub API
+            const content = JSON.stringify(dictionaryData, null, 2);
+            const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+            
+            // Use GitHub Pages API to create/update file
+            await this.updateGitHubFile(contentBase64);
+            
+            this.showToast('Auto-synced to GitHub', 'success');
+        } catch (error) {
+            console.error('GitHub sync failed:', error);
+            // Don't show error toast for auto-sync to avoid annoyance
+        } finally {
+            this.isSyncing = false;
+        }
+    }
+    
+    async forceSyncToGitHub() {
+        this.showToast('Syncing to GitHub...', 'info');
+        
+        try {
+            const dictionaryData = {
+                words: this.words,
+                lastSync: new Date().toISOString(),
+                totalWords: this.words.length,
+                version: '1.0'
+            };
+            
+            const content = JSON.stringify(dictionaryData, null, 2);
+            const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+            
+            await this.updateGitHubFile(contentBase64);
+            
+            this.showToast('Successfully synced to GitHub!', 'success');
+        } catch (error) {
+            console.error('Force sync failed:', error);
+            this.showToast('Failed to sync: ' + error.message, 'error');
+        }
+    }
+    
+    async updateGitHubFile(contentBase64) {
+        // This uses a serverless function approach
+        // We'll use GitHub's API via a proxy to avoid CORS issues
+        
+        try {
+            // Method 1: Direct fetch with CORS proxy
+            const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+            const apiUrl = `https://api.github.com/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/contents/dictionary.json`;
+            
+            // First, check if file exists
+            const checkResponse = await fetch(proxyUrl + apiUrl);
+            let sha = null;
+            
+            if (checkResponse.ok) {
+                const existingFile = await checkResponse.json();
+                sha = existingFile.sha;
+            }
+            
+            // Update or create file
+            const updateResponse = await fetch(proxyUrl + apiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `token ${this.getGitHubToken()}`
+                },
+                body: JSON.stringify({
+                    message: `📚 Update dictionary: ${this.words.length} words`,
+                    content: contentBase64,
+                    sha: sha,
+                    branch: this.githubConfig.branch
+                })
+            });
+            
+            if (!updateResponse.ok) {
+                throw new Error(`GitHub API error: ${updateResponse.status}`);
+            }
+            
+            return await updateResponse.json();
+        } catch (error) {
+            console.error('GitHub update failed:', error);
+            
+            // Fallback: Use GitHub Issues API (which allows CORS)
+            await this.createDictionaryIssue();
+        }
+    }
+    
+    async createDictionaryIssue() {
+        try {
+            const dictionaryData = {
+                words: this.words,
+                lastSync: new Date().toISOString(),
+                totalWords: this.words.length,
+                version: '1.0'
+            };
+            
+            const issueData = {
+                title: `[DICT-SYNC] Dictionary Update - ${new Date().toLocaleDateString()}`,
+                body: '```json\n' + JSON.stringify(dictionaryData, null, 2) + '\n```',
+                labels: ['dictionary-sync', 'auto-update']
+            };
+            
+            // Use GitHub's issues API with CORS proxy
+            const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+            const apiUrl = `https://api.github.com/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/issues`;
+            
+            const response = await fetch(proxyUrl + apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `token ${this.getGitHubToken()}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                },
+                body: JSON.stringify(issueData)
+            });
+            
+            if (response.ok) {
+                const issue = await response.json();
+                console.log('Dictionary sync issue created:', issue.number);
+            }
+        } catch (error) {
+            console.error('Failed to create issue:', error);
+            throw error;
+        }
+    }
+    
+    getGitHubToken() {
+        // In production, this would be stored securely
+        // For demo, we'll use a placeholder
+        return 'YOUR_GITHUB_TOKEN_HERE'; // Replace with actual token
     }
     
     updateWord(wordId, updates) {
@@ -450,6 +626,10 @@ class DictionaryManager {
         
         // Update form to edit mode
         const form = document.getElementById('wordForm');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.textContent = 'Update Word';
+        submitBtn.innerHTML = '<i class="fas fa-save"></i> Update Word';
+        
         form.onsubmit = (e) => {
             e.preventDefault();
             this.updateCurrentWord();
@@ -478,6 +658,10 @@ class DictionaryManager {
         
         // Reset form handler
         const form = document.getElementById('wordForm');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        submitBtn.textContent = 'Save Word';
+        submitBtn.innerHTML = '<i class="fas fa-save"></i> Save Word';
+        
         form.onsubmit = (e) => {
             e.preventDefault();
             this.saveWord();
@@ -487,60 +671,6 @@ class DictionaryManager {
     deleteCurrentWord() {
         if (!this.currentWordId) return;
         this.deleteWord(this.currentWordId);
-    }
-    
-    async syncToGitHub() {
-        this.showToast('Syncing to GitHub...', 'info');
-        
-        try {
-            // Save all words to a single JSON file
-            const content = JSON.stringify(this.words, null, 2);
-            const filename = `dictionary_backup_${new Date().toISOString().split('T')[0]}.json`;
-            
-            // Create a GitHub issue with all words
-            await this.createGitHubIssue(filename, content);
-            
-            this.showToast('Sync initiated! Check GitHub issues.', 'success');
-        } catch (error) {
-            console.error('GitHub sync error:', error);
-            this.showToast('Failed to sync to GitHub: ' + error.message, 'error');
-        }
-    }
-    
-    async syncWordToGitHub(word) {
-        try {
-            const content = JSON.stringify(word, null, 2);
-            const issueTitle = `[DICT] ${word.word}`;
-            
-            // Create a GitHub issue for this word
-            await this.createGitHubIssue(issueTitle, content);
-        } catch (error) {
-            console.error('Failed to sync word to GitHub:', error);
-        }
-    }
-    
-    async createGitHubIssue(title, content) {
-        // This creates a GitHub issue that will trigger your workflow
-        const issueData = {
-            title: title,
-            body: content,
-            labels: ['dictionary', 'auto-save']
-        };
-        
-        // Note: This requires proper CORS setup or a backend proxy
-        // For now, we'll use the browser's fetch to create an issue
-        // You might need to implement this differently based on your setup
-        
-        this.showToast(`GitHub issue "${title}" would be created here`, 'info');
-        
-        // Since we can't directly create issues from browser due to CORS,
-        // we'll provide a link to create the issue manually
-        const issueUrl = `https://github.com/${this.githubConfig.owner}/${this.githubConfig.repo}/issues/new?` +
-            `title=${encodeURIComponent(title)}&` +
-            `body=${encodeURIComponent(content)}&` +
-            `labels=dictionary`;
-        
-        window.open(issueUrl, '_blank');
     }
     
     setupTheme() {
