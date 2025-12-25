@@ -25,6 +25,15 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: |
+          npm install -g jq
+      
       - name: Process dictionary data
         run: |
           echo "🔍 Processing dictionary data..."
@@ -73,7 +82,7 @@ jobs:
           
           # Update metadata
           WORD_COUNT=$(jq '.words | length' dictionary.json)
-          jq ".totalWords = $WORD_COUNT" dictionary.json > temp.json
+          jq ".totalWords = $WORD_COUNT | .metadata = {lastSync: \"$(date -Iseconds)\", totalWords: $WORD_COUNT, version: \"2.0\"}" dictionary.json > temp.json
           mv temp.json dictionary.json
           
           echo "📊 Total words: $WORD_COUNT"
@@ -118,11 +127,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const wordCount = require('fs').readFileSync('dictionary.json', 'utf8');
+            const data = JSON.parse(wordCount);
+            
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `✅ Dictionary synced successfully!\n\n**Total words:** $(jq '.totalWords' dictionary.json)\n**View data:** https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/main/dictionary.json`
+              body: `✅ Dictionary synced successfully!\n\n**Total words:** ${data.totalWords}\n**View data:** https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/main/dictionary.json\n\n*This issue was automatically closed by the sync workflow.*`
             });
             
             await github.rest.issues.update({
