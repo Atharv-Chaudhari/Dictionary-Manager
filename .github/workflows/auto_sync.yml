@@ -1,123 +1,346 @@
-name: 🤖 Auto Sync Dictionary
+name: 🤖 Dictionary Auto-Sync
 
 on:
-  # Run every 5 minutes
+  # Run every 2 minutes
   schedule:
-    - cron: '*/5 * * * *'
-  
-  # Run on repository dispatch (from web app)
-  repository_dispatch:
-    types: [dictionary_update]
-  
-  # Run on push (when we update the file)
-  push:
-    paths:
-      - 'dictionary.json'
+    - cron: '*/2 * * * *'
   
   # Manual trigger
   workflow_dispatch:
+  
+  # Trigger on repository dispatch
+  repository_dispatch:
+    types: [dictionary_sync]
+  
+  # Also run when issues are created
+  issues:
+    types: [opened]
 
 jobs:
-  sync:
+  sync-dictionary:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
       
       - name: Setup environment
         run: |
-          # Create directories
-          mkdir -p data
-          mkdir -p backup
-          
-          # Install jq for JSON processing
+          echo "🔄 Setting up environment..."
           sudo apt-get update
           sudo apt-get install -y jq
+          mkdir -p data
+          mkdir -p backups
+          mkdir -p sync-data
       
-      - name: Process changes from web app
-        id: process_changes
+      - name: Load existing dictionary
+        id: load_dict
         run: |
-          echo "🔍 Looking for changes from web app..."
+          echo "📚 Loading existing dictionary..."
           
-          # Check if there are pending changes from localStorage
-          # (In real app, this would come from an API or webhook)
-          
-          # For now, we'll process the current dictionary.json
           if [ -f "dictionary.json" ]; then
-            echo "📚 Found existing dictionary"
-            WORD_COUNT=$(jq '.words | length' dictionary.json)
-            echo "word_count=$WORD_COUNT" >> $GITHUB_OUTPUT
+            echo "✅ Found existing dictionary.json"
+            # Create backup before any changes
+            cp dictionary.json "dictionary_backup_$(date +%s).json"
           else
-            echo "📝 Creating initial dictionary"
+            echo "📝 Creating initial dictionary.json"
             echo '{"words": [], "metadata": {"created": "'$(date -Iseconds)'", "version": "1.0", "totalWords": 0}}' > dictionary.json
-            echo "word_count=0" >> $GITHUB_OUTPUT
           fi
       
-      - name: Merge external changes
-        if: github.event_name == 'repository_dispatch'
+      - name: Process sync requests
+        id: process_sync
         run: |
-          echo "🔄 Merging external changes..."
+          echo "🔄 Processing sync requests..."
           
-          # This is where you would merge changes from web app
-          # For now, we'll just update the timestamp
-          jq '.metadata.lastSync = "'$(date -Iseconds)'"' dictionary.json > temp.json
-          mv temp.json dictionary.json
+          # Load current dictionary words
+          CURRENT_WORDS=$(jq -c '.words' dictionary.json 2>/dev/null || echo '[]')
+          echo "$CURRENT_WORDS" > sync-data/current-words.json
+          
+          # Initialize merged words with current words
+          MERGED_WORDS="$CURRENT_WORDS"
+          
+          # Check if triggered by issue
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            echo "📥 Processing issue #${{ github.event.issue.number }}"
+            
+            # Try to extract JSON from issue body
+            ISSUE_BODY="${{ github.event.issue.body }}"
+            
+            if echo "$ISSUE_BODY" | grep -q '```json'; then
+              JSON_DATA=$(echo "$ISSUE_BODY" | sed -n '/```json/,/```/p' | sed '1d;$d')
+              
+              if [ -n "$JSON_DATA" ]; then
+                echo "$JSON_DATA" > sync-data/issue-data.json
+                ISSUE_WORDS=$(echo "$JSON_DATA" | jq -c '.words // []' 2>/dev/null || echo '[]')
+                
+                if [ "$ISSUE_WORDS" != "[]" ]; then
+                  MERGED_WORDS=$(echo "$MERGED_WORDS" | jq ". + $ISSUE_WORDS")
+                  echo "✅ Added words from issue"
+                fi
+              fi
+            fi
+          fi
+          
+          # Check if triggered by repository dispatch
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "📥 Processing repository dispatch..."
+            
+            # Create payload file
+            echo '${{ toJson(github.event.client_payload) }}' > sync-data/dispatch-data.json
+            
+            DISPATCH_WORDS=$(jq -c '.words // []' sync-data/dispatch-data.json 2>/dev/null || echo '[]')
+            
+            if [ "$DISPATCH_WORDS" != "[]" ]; then
+              MERGED_WORDS=$(echo "$MERGED_WORDS" | jq ". + $DISPATCH_WORDS")
+              echo "✅ Added words from dispatch"
+            fi
+          fi
+          
+          # Save merged words
+          echo "$MERGED_WORDS" > sync-data/merged-words.json
+          
+          MERGED_COUNT=$(echo "$MERGED_WORDS" | jq 'length')
+          echo "📊 Total words before deduplication: $MERGED_COUNT"
+          echo "merged_count=$MERGED_COUNT" >> $GITHUB_OUTPUT
       
-      - name: Create data files
+      - name: Deduplicate words
+        id: deduplicate
         run: |
-          echo "📁 Creating data files..."
+          echo "🎯 Deduplicating words..."
+          
+          MERGED_WORDS=$(cat sync-data/merged-words.json)
+          
+          if [ "$MERGED_WORDS" = "[]" ]; then
+            echo "[]" > sync-data/deduplicated-words.json
+            echo "deduplicated_count=0" >> $GITHUB_OUTPUT
+            echo "✅ No words to deduplicate"
+            exit 0
+          fi
+          
+          # Create a simple deduplication by word text (case-insensitive)
+          # This is a simplified version - in production you'd want more sophisticated merging
+          
+          # Convert to array and process with jq
+          DEDUPLICATED_WORDS=$(echo "$MERGED_WORDS" | jq '
+            # Group by word (case-insensitive)
+            group_by(.word | ascii_downcase) |
+            # For each group, take the first (most recent by updatedAt if available)
+            map(sort_by(.updatedAt // .createdAt // "1970-01-01") | reverse | .[0])
+          ')
+          
+          echo "$DEDUPLICATED_WORDS" > sync-data/deduplicated-words.json
+          
+          DEDUPLICATED_COUNT=$(echo "$DEDUPLICATED_WORDS" | jq 'length')
+          echo "📊 Unique words after deduplication: $DEDUPLICATED_COUNT"
+          echo "deduplicated_count=$DEDUPLICATED_COUNT" >> $GITHUB_OUTPUT
+      
+      - name: Update dictionary.json
+        run: |
+          echo "📝 Updating dictionary.json..."
+          
+          DEDUPLICATED_WORDS=$(cat sync-data/deduplicated-words.json)
+          TIMESTAMP=$(date -Iseconds)
+          WORD_COUNT=$(echo "$DEDUPLICATED_WORDS" | jq 'length')
+          
+          # Create the updated dictionary
+          cat > dictionary.json << EOF
+{
+  "words": $DEDUPLICATED_WORDS,
+  "metadata": {
+    "lastSync": "$TIMESTAMP",
+    "totalWords": $WORD_COUNT,
+    "version": "2.0",
+    "source": "GitHub Actions Auto-Sync",
+    "syncId": "${{ github.run_id }}",
+    "trigger": "${{ github.event_name }}"
+  }
+}
+EOF
+          
+          echo "✅ dictionary.json updated"
+          echo "📊 Total words: $WORD_COUNT"
+      
+      - name: Create individual word files
+        run: |
+          echo "📁 Creating individual word files..."
+          
+          # Clean and recreate data directory
+          rm -rf data
+          mkdir -p data
+          
+          # Count before creating
+          echo "Creating individual word files..."
           
           # Create individual word files
-          jq -c '.words[]' dictionary.json | while read word; do
-            WORD_NAME=$(echo "$word" | jq -r '.word' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
-            echo "$word" | jq '.' > "data/${WORD_NAME}.json"
+          jq -c '.words[]' dictionary.json | while read -r word; do
+            # Extract word name safely
+            WORD_NAME=$(echo "$word" | jq -r '.word // "unknown"' | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_]//g')
+            
+            # Skip if word name is empty or too long
+            if [ -n "$WORD_NAME" ] && [ "${#WORD_NAME}" -lt 50 ]; then
+              echo "$word" | jq '.' > "data/${WORD_NAME}.json"
+            fi
           done
           
-          # Create web-accessible version
-          cat > dictionary-data.js << 'EOF'
-          // Auto-generated dictionary data
-          // Last sync: $(date)
-          window.dictionaryData = $(cat dictionary.json);
-          console.log('📚 Dictionary loaded:', window.dictionaryData.words.length, 'words');
-          if (window.dictionary && window.dictionary.loadData) {
-            window.dictionary.loadData(window.dictionaryData);
-          }
-          EOF
+          FILE_COUNT=$(ls -1 data/*.json 2>/dev/null | wc -l || echo 0)
+          echo "✅ Created $FILE_COUNT individual word files"
       
-      - name: Create backup
+      - name: Create JavaScript data file
+        run: |
+          echo "🌐 Creating JavaScript data file..."
+          
+          DICT_DATA=$(cat dictionary.json)
+          TIMESTAMP=$(date)
+          WORD_COUNT=$(echo "$DICT_DATA" | jq '.words | length')
+          
+          cat > dictionary-data.js << EOF
+// ===== DICTIONARY DATA =====
+// Auto-generated by GitHub Actions
+// Last sync: $TIMESTAMP
+// Sync ID: ${{ github.run_id }}
+// Total words: $WORD_COUNT
+
+const dictionaryData = $DICT_DATA;
+
+// Make available globally
+if (typeof window !== 'undefined') {
+  window.dictionaryData = dictionaryData;
+  
+  // Notify dictionary manager if it exists
+  if (window.dictionary && typeof window.dictionary.onDataUpdate === 'function') {
+    try {
+      window.dictionary.onDataUpdate(dictionaryData);
+    } catch (error) {
+      console.log('⚠️ Could not auto-update dictionary:', error);
+    }
+  }
+}
+
+console.log('📚 Dictionary loaded:', dictionaryData.words.length, 'words');
+console.log('🔄 Last sync:', dictionaryData.metadata.lastSync);
+console.log('🎯 Source:', dictionaryData.metadata.source);
+EOF
+          
+          echo "✅ Created dictionary-data.js"
+      
+      - name: Create organized backup
         run: |
           echo "💾 Creating backup..."
-          cp dictionary.json "backup/dictionary_$(date +%Y%m%d_%H%M%S).json"
           
-          # Keep only last 10 backups
-          ls -1 backup/dictionary_*.json | head -n -10 | xargs -r rm
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_DIR="backups/$(date +%Y/%m/%d)"
+          BACKUP_FILE="${BACKUP_DIR}/dictionary_${TIMESTAMP}.json"
+          
+          # Create directory structure
+          mkdir -p "$BACKUP_DIR"
+          
+          # Create backup
+          cp dictionary.json "$BACKUP_FILE"
+          
+          # Also create a latest copy
+          cp dictionary.json "backups/dictionary_latest.json"
+          
+          # Keep only last 50 backups total
+          ls -1 backups/*/*/*.json 2>/dev/null | head -n -50 | xargs -r rm -f
+          
+          echo "✅ Backup created: $BACKUP_FILE"
       
       - name: Commit and push changes
+        id: commit
         run: |
           echo "🚀 Committing changes..."
           
+          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          git add dictionary.json dictionary-data.js data/ backup/
+          # Add all files
+          git add dictionary.json dictionary-data.js data/ backups/
           
+          # Check if there are changes
           if git diff --staged --quiet; then
             echo "✅ No changes to commit"
+            echo "changes_made=false" >> $GITHUB_OUTPUT
           else
+            # Create commit
             TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
             WORD_COUNT=$(jq '.words | length' dictionary.json)
+            
             git commit -m "🤖 Auto-sync: ${TIMESTAMP} (${WORD_COUNT} words)"
+            
+            # Push changes
             git push
-            echo "✅ Changes pushed to GitHub"
+            
+            echo "✅ Changes committed and pushed"
+            echo "📊 Word count: ${WORD_COUNT}"
+            echo "⏰ Sync time: ${TIMESTAMP}"
+            echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
       
-      - name: Update sync status
+      - name: Close issue if processed
+        if: github.event_name == 'issues' && steps.commit.outputs.changes_made == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const dictionary = JSON.parse(fs.readFileSync('dictionary.json', 'utf8'));
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ✅ Dictionary Sync Completed!\n\n` +
+                    `**Total Words:** ${dictionary.words.length}\n` +
+                    `**Last Sync:** ${dictionary.metadata.lastSync}\n` +
+                    `**Sync ID:** ${context.runId}\n\n` +
+                    `✅ Your changes have been successfully synced to all devices.\n\n` +
+                    `🔗 **View Live Data:** https://raw.githubusercontent.com/${context.repo.owner}/${context.repo.repo}/main/dictionary.json\n` +
+                    `🔗 **Web App:** https://${context.repo.owner}.github.io/${context.repo.repo}/\n\n` +
+                    `*This issue was automatically closed by the sync workflow.*`
+            });
+            
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });
+      
+      - name: Create sync report
         run: |
-          echo "🔄 Sync completed at $(date)"
-          echo "📊 Word count: $(jq '.words | length' dictionary.json)"
+          echo "📊 Creating sync report..."
+          
+          WORD_COUNT=$(jq '.words | length' dictionary.json)
+          TIMESTAMP=$(date)
+          
+          cat >> sync-log.txt << EOF
+================================
+Sync Report: ${{ github.run_id }}
+Time: $TIMESTAMP
+Event: ${{ github.event_name }}
+Words: $WORD_COUNT
+Status: ✅ Success
+================================
+
+EOF
+          
+          # Add to git
+          git add sync-log.txt 2>/dev/null || true
+          git commit -m "📝 Update sync log" 2>/dev/null || true
+          git push 2>/dev/null || true
+      
+      - name: Final status
+        run: |
+          echo "🎉 Sync completed successfully!"
+          echo "================================="
+          echo "📊 Final word count: $(jq '.words | length' dictionary.json)"
+          echo "🕒 Completion time: $(date)"
+          echo "🔄 Next sync in 2 minutes"
+          echo "🔗 Live data: https://raw.githubusercontent.com/${{ github.repository }}/main/dictionary.json"
+          echo "🔗 Web app: https://${{ github.repository_owner }}.github.io/$(echo ${{ github.repository }} | cut -d'/' -f2)/"
+          echo "================================="

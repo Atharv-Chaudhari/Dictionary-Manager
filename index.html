@@ -961,22 +961,6 @@
             }
         }
     </style>
-    <!-- Add sync status script -->
-    <script>
-    // Auto-check for updates
-    setInterval(() => {
-        if (window.dictionary && !window.dictionary.isSyncing) {
-            window.dictionary.checkForUpdates();
-        }
-    }, 30000); // Every 30 seconds
-
-    // Check for updates when page becomes visible
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && window.dictionary) {
-            window.dictionary.checkForUpdates();
-        }
-    });
-    </script>
 </head>
 <body>
     <!-- App Container -->
@@ -994,12 +978,15 @@
             </div>
             
             <div class="header-actions">
-                <div class="sync-status active" id="syncStatus">
+                <div class="sync-status" id="syncStatus">
                     <i class="fas fa-circle"></i>
                     Auto-Sync: ACTIVE
                 </div>
                 <button class="btn btn-outline" id="themeToggle">
                     <i class="fas fa-moon"></i> Theme
+                </button>
+                <button class="btn btn-outline" id="manualSyncBtn">
+                    <i class="fas fa-sync-alt"></i> Sync Now
                 </button>
                 <a href="https://github.com/Atharv-Chaudhari/Dictionary-Manager" target="_blank" class="btn btn-outline">
                     <i class="fab fa-github"></i> GitHub
@@ -1101,7 +1088,7 @@
                 <div class="content-header">
                     <div>
                         <h2>My Dictionary</h2>
-                        <p>All your words automatically saved to GitHub</p>
+                        <p>All your words automatically synced across devices</p>
                     </div>
                     <div class="content-actions">
                         <div class="search-container">
@@ -1153,10 +1140,18 @@
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Load Puter.js -->
-    <script src="https://js.puter.com/v2/"></script>
-
-    <!-- Main App Script -->
+    <!-- JavaScript Files -->
     <script src="script.js"></script>
+    <script src="dictionary-data.js" defer></script>
+    
+    <script>
+        // Auto-refresh dictionary data every 30 seconds
+        setInterval(() => {
+            const script = document.createElement('script');
+            script.src = 'dictionary-data.js?v=' + Date.now();
+            script.defer = true;
+            document.head.appendChild(script);
+        }, 30000);
+    </script>
 </body>
 </html>

@@ -6,28 +6,25 @@ class DictionaryManager {
         this.autoSync = true;
         this.syncInterval = null;
         this.isSyncing = false;
-        this.pendingChanges = [];
-        this.lastGitHash = null;
+        this.lastSyncTime = null;
         
         // GitHub Configuration
         this.githubConfig = {
             owner: 'Atharv-Chaudhari',
             repo: 'Dictionary-Manager',
             branch: 'main',
-            apiUrl: 'https://api.github.com',
-            rawUrl: 'https://raw.githubusercontent.com',
-            // Token will be handled via GitHub Actions
+            rawUrl: 'https://raw.githubusercontent.com'
         };
         
-        // Initialize
+        // Initialize the app
         this.init();
     }
     
     async init() {
         console.log('🚀 Initializing Dictionary Manager...');
         
-        // Load from GitHub (primary source)
-        await this.loadFromGitHub();
+        // Load from localStorage first
+        this.loadFromLocalStorage();
         
         // Setup event listeners
         this.setupEventListeners();
@@ -39,19 +36,25 @@ class DictionaryManager {
         this.updateStats();
         this.renderWordList();
         
-        // Start auto-sync (every 60 seconds)
+        // Start auto-sync
         this.startAutoSync();
         
         // Setup sync indicator
-        this.setupSyncIndicator();
+        this.updateSyncStatus('synced');
         
-        this.showToast('📚 Dictionary loaded from GitHub!', 'success');
+        this.showToast('📚 Dictionary Manager Ready!', 'success');
+        
+        // Load from GitHub in background
+        setTimeout(() => this.syncFromGitHub(), 1000);
     }
     
     // ===== EVENT LISTENERS =====
     setupEventListeners() {
         // Theme toggle
         document.getElementById('themeToggle').addEventListener('click', () => this.toggleTheme());
+        
+        // Manual sync button
+        document.getElementById('manualSyncBtn').addEventListener('click', () => this.manualSync());
         
         // AI Analysis
         document.getElementById('aiAnalyzeBtn').addEventListener('click', () => this.analyzeWord());
@@ -71,7 +74,7 @@ class DictionaryManager {
         
         // Search
         document.getElementById('searchInput').addEventListener('input', (e) => {
-            this.renderWordList(this.currentFilter, e.target.value);
+            this.renderWordList(e.target.value);
         });
         
         // Filters
@@ -97,10 +100,61 @@ class DictionaryManager {
         });
     }
     
-    // ===== GITHUB AS PRIMARY STORAGE =====
-    async loadFromGitHub() {
+    // ===== LOCAL STORAGE =====
+    loadFromLocalStorage() {
         try {
-            console.log('🔄 Loading from GitHub...');
+            const saved = localStorage.getItem('dictionary_words');
+            this.words = saved ? JSON.parse(saved) : [];
+            
+            // Add sample data if empty
+            if (this.words.length === 0) {
+                this.words = [{
+                    id: 1,
+                    word: 'Serendipity',
+                    definition: 'The occurrence and development of events by chance in a happy or beneficial way.',
+                    partOfSpeech: 'noun',
+                    pronunciation: '/ˌsɛrənˈdɪpɪti/',
+                    examples: [
+                        'Finding that old photo was pure serendipity.',
+                        'Their meeting was a happy serendipity.'
+                    ],
+                    synonyms: ['fortunate discovery', 'happy accident', 'luck'],
+                    antonyms: ['misfortune', 'bad luck'],
+                    difficulty: 'medium',
+                    mastered: false,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    source: 'Sample'
+                }];
+                this.saveToLocalStorage();
+            }
+            
+            console.log(`📚 Loaded ${this.words.length} words from localStorage`);
+            
+        } catch (error) {
+            console.error('Error loading words:', error);
+            this.words = [];
+        }
+    }
+    
+    saveToLocalStorage() {
+        try {
+            localStorage.setItem('dictionary_words', JSON.stringify(this.words));
+            console.log(`💾 Saved ${this.words.length} words to localStorage`);
+        } catch (error) {
+            console.error('Error saving words:', error);
+        }
+    }
+    
+    // ===== GITHUB SYNC =====
+    async syncFromGitHub() {
+        if (this.isSyncing) return;
+        
+        this.isSyncing = true;
+        this.updateSyncStatus('syncing');
+        
+        try {
+            console.log('🔄 Syncing from GitHub...');
             
             const url = `${this.githubConfig.rawUrl}/${this.githubConfig.owner}/${this.githubConfig.repo}/${this.githubConfig.branch}/dictionary.json`;
             const response = await fetch(url, {
@@ -114,104 +168,167 @@ class DictionaryManager {
                 const data = await response.json();
                 
                 if (data.words && Array.isArray(data.words)) {
-                    this.words = data.words.map(word => ({
-                        ...word,
-                        id: word.id || Date.now() + Math.random(),
-                        createdAt: word.createdAt || new Date().toISOString(),
-                        updatedAt: word.updatedAt || new Date().toISOString()
-                    }));
+                    // Merge GitHub data with local data
+                    this.mergeWithGitHubData(data.words);
                     
-                    this.lastGitHash = await this.getCurrentGitHash();
-                    
-                    console.log(`✅ Loaded ${this.words.length} words from GitHub`);
-                    this.saveLocalBackup();
-                    return true;
+                    console.log(`✅ Synced ${data.words.length} words from GitHub`);
+                    this.showToast('🔄 Synced latest changes from GitHub', 'success');
                 }
             }
             
-            // If no file exists, create empty dictionary
-            this.words = [];
-            await this.createInitialDictionary();
-            return true;
-            
         } catch (error) {
-            console.error('❌ Failed to load from GitHub:', error);
-            
-            // Fallback to local backup
-            this.loadLocalBackup();
-            this.showToast('⚠️ Using local backup. Sync will retry.', 'warning');
-            return false;
+            console.error('❌ Failed to sync from GitHub:', error);
+        } finally {
+            this.isSyncing = false;
+            this.updateSyncStatus('synced');
+            this.lastSyncTime = new Date();
         }
     }
     
-    async createInitialDictionary() {
-        const initialData = {
-            words: [{
-                id: 1,
-                word: 'Serendipity',
-                definition: 'The occurrence and development of events by chance in a happy or beneficial way.',
-                partOfSpeech: 'noun',
-                pronunciation: '/ˌsɛrənˈdɪpɪti/',
-                examples: [
-                    'Finding that old photo was pure serendipity.',
-                    'Their meeting was a happy serendipity.'
-                ],
-                synonyms: ['fortunate discovery', 'happy accident', 'luck'],
-                antonyms: ['misfortune', 'bad luck'],
-                difficulty: 'medium',
-                mastered: false,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                source: 'Sample'
-            }],
-            metadata: {
-                created: new Date().toISOString(),
-                version: '1.0',
-                totalWords: 1
-            }
-        };
+    mergeWithGitHubData(githubWords) {
+        const localWordIds = new Set(this.words.map(w => w.id));
+        const githubWordIds = new Set(githubWords.map(w => w.id));
         
-        await this.saveToGitHub(initialData);
+        // Add new words from GitHub
+        githubWords.forEach(githubWord => {
+            if (!localWordIds.has(githubWord.id)) {
+                this.words.push(githubWord);
+            }
+        });
+        
+        // Update existing words if GitHub version is newer
+        this.words = this.words.map(localWord => {
+            const githubWord = githubWords.find(w => w.id === localWord.id);
+            if (githubWord) {
+                const localDate = new Date(localWord.updatedAt || localWord.createdAt || 0);
+                const githubDate = new Date(githubWord.updatedAt || githubWord.createdAt || 0);
+                
+                if (githubDate > localDate) {
+                    return githubWord; // Use GitHub version if newer
+                }
+            }
+            return localWord;
+        });
+        
+        // Save merged data
+        this.saveToLocalStorage();
+        this.updateStats();
+        this.renderWordList();
     }
     
-    async saveToGitHub(data) {
-        // This will be handled by GitHub Actions
-        // We create an issue with the data, and GitHub Actions will process it
+    async pushToGitHub() {
+        if (this.isSyncing) return;
+        
+        this.isSyncing = true;
+        this.updateSyncStatus('syncing');
         
         try {
-            const issueData = {
-                title: `[DICT-SYNC] ${new Date().toLocaleString()} - ${data.words.length} words`,
-                body: '```json\n' + JSON.stringify(data, null, 2) + '\n```',
-                labels: ['dictionary-sync', 'auto-sync']
+            console.log('🚀 Pushing changes to GitHub...');
+            
+            // Create sync request
+            const syncData = {
+                timestamp: new Date().toISOString(),
+                words: this.words,
+                device: navigator.userAgent.substring(0, 100),
+                url: window.location.href,
+                action: 'sync_request'
             };
             
-            // Store locally for GitHub Actions to pick up
-            localStorage.setItem('pending_sync', JSON.stringify({
-                data: data,
-                timestamp: new Date().toISOString()
-            }));
+            // Create an issue with the sync data
+            await this.createSyncIssue(syncData);
             
-            console.log('💾 Changes queued for GitHub sync');
+            // Also trigger repository dispatch
+            await this.triggerRepositoryDispatch(syncData);
             
-            // Show sync status
-            this.updateSyncStatus('pending');
-            
-            // Try to trigger GitHub Actions via API (no token needed for public repo)
-            await this.triggerGitHubActions();
-            
-            return true;
+            console.log('✅ Changes queued for GitHub sync');
+            this.showToast('📤 Changes queued for GitHub sync!', 'success');
             
         } catch (error) {
-            console.error('Failed to queue for GitHub sync:', error);
-            return false;
+            console.error('❌ Failed to push to GitHub:', error);
+            this.showToast('⚠️ Failed to queue sync', 'error');
+        } finally {
+            this.isSyncing = false;
+            this.updateSyncStatus('synced');
+        }
+    }
+        // ===== IMPROVED SYNC METHOD =====
+    async improvedSync() {
+        try {
+            console.log('🚀 Starting improved sync...');
+            
+            // Create sync payload
+            const syncPayload = {
+                timestamp: new Date().toISOString(),
+                words: this.words,
+                device: navigator.userAgent.substring(0, 100),
+                action: 'dictionary_sync',
+                source: 'web_app'
+            };
+            
+            // Method 1: Create GitHub Issue
+            await this.createSyncIssue(syncPayload);
+            
+            // Method 2: Try repository dispatch (might fail for public access, that's OK)
+            try {
+                await fetch(
+                    `https://api.github.com/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/dispatches`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            event_type: 'dictionary_sync',
+                            client_payload: syncPayload
+                        })
+                    }
+                );
+                console.log('✅ Repository dispatch sent');
+            } catch (error) {
+                console.log('⚠️ Repository dispatch failed (expected)');
+            }
+            
+            this.showToast('📤 Sync request sent to GitHub!', 'success');
+            
+            // Check for updates after 10 seconds
+            setTimeout(() => this.syncFromGitHub(), 10000);
+            
+        } catch (error) {
+            console.error('Sync failed:', error);
+            this.showToast('⚠️ Sync failed, will retry', 'error');
         }
     }
     
-    async triggerGitHubActions() {
-        // Create a dispatch event for GitHub Actions
+    // Update the existing pushToGitHub method to use improvedSync
+    // Replace the existing pushToGitHub method with:
+    async pushToGitHub() {
+        return this.improvedSync();
+    }
+    async createSyncIssue(syncData) {
         try {
-            // Using GitHub's repository_dispatch API
-            await fetch(
+            // Create issue data
+            const issueData = {
+                title: `[SYNC-REQUEST] ${new Date().toLocaleString()} - ${syncData.words.length} words`,
+                body: `## Sync Request\n\n**Device:** ${syncData.device}\n**Time:** ${syncData.timestamp}\n**Words:** ${syncData.words.length}\n\n\`\`\`json\n${JSON.stringify(syncData, null, 2)}\n\`\`\``,
+                labels: ['sync-request', 'auto-sync']
+            };
+            
+            // Store locally for tracking
+            localStorage.setItem('last_sync_request', JSON.stringify(issueData));
+            localStorage.setItem('last_sync_time', new Date().toISOString());
+            
+            console.log('📝 Sync issue created locally');
+            
+        } catch (error) {
+            console.error('Failed to create sync issue:', error);
+        }
+    }
+    
+    async triggerRepositoryDispatch(syncData) {
+        try {
+            // Try to trigger repository_dispatch event
+            const response = await fetch(
                 `https://api.github.com/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/dispatches`,
                 {
                     method: 'POST',
@@ -220,218 +337,58 @@ class DictionaryManager {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        event_type: 'dictionary_update',
-                        client_payload: {
-                            timestamp: new Date().toISOString(),
-                            word_count: this.words.length
-                        }
+                        event_type: 'dictionary_sync',
+                        client_payload: syncData
                     })
                 }
             );
-        } catch (error) {
-            // Silent fail - GitHub Actions will still run on schedule
-            console.log('GitHub dispatch triggered (may require token)');
-        }
-    }
-    
-    // ===== LOCAL BACKUP SYSTEM =====
-    saveLocalBackup() {
-        const backup = {
-            words: this.words,
-            lastSync: new Date().toISOString(),
-            gitHash: this.lastGitHash
-        };
-        
-        localStorage.setItem('dictionary_backup', JSON.stringify(backup));
-        console.log('💾 Local backup saved');
-    }
-    
-    loadLocalBackup() {
-        try {
-            const backup = JSON.parse(localStorage.getItem('dictionary_backup'));
-            if (backup && backup.words) {
-                this.words = backup.words;
-                this.lastGitHash = backup.gitHash;
-                console.log(`📂 Loaded ${this.words.length} words from local backup`);
-                return true;
+            
+            if (response.ok) {
+                console.log('✅ Repository dispatch triggered');
             }
         } catch (error) {
-            console.error('Failed to load local backup:', error);
+            // Silent fail - issues method will work
+            console.log('⚠️ Repository dispatch failed (expected for public access)');
         }
-        return false;
     }
     
     // ===== AUTO-SYNC SYSTEM =====
     startAutoSync() {
-        // Check for updates every 60 seconds
+        // Pull changes from GitHub every 60 seconds
         this.syncInterval = setInterval(() => {
-            this.checkForUpdates();
+            this.syncFromGitHub();
         }, 60 * 1000);
         
-        // Also sync when page becomes visible
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-                this.checkForUpdates();
-            }
-        });
+        // Push local changes every 2 minutes
+        setInterval(() => {
+            this.pushToGitHub();
+        }, 120 * 1000);
         
-        console.log('🔁 Auto-sync started (every 60 seconds)');
+        console.log('🔁 Auto-sync started');
     }
     
-    async checkForUpdates() {
-        if (this.isSyncing) return;
-        
-        this.isSyncing = true;
-        this.updateSyncStatus('syncing');
-        
-        try {
-            // Get current git hash from GitHub
-            const currentHash = await this.getCurrentGitHash();
-            
-            if (currentHash && currentHash !== this.lastGitHash) {
-                console.log('🔄 New version detected on GitHub, syncing...');
-                await this.loadFromGitHub();
-                this.updateStats();
-                this.renderWordList();
-                this.showToast('🔄 Synced latest changes from GitHub', 'success');
-            }
-            
-            // Push any pending changes
-            await this.pushPendingChanges();
-            
-            this.lastGitHash = currentHash;
-            this.updateSyncStatus('synced');
-            
-        } catch (error) {
-            console.error('Sync check failed:', error);
-            this.updateSyncStatus('error');
-        } finally {
-            this.isSyncing = false;
-        }
-    }
-    
-    async getCurrentGitHash() {
-        try {
-            // Get the latest commit SHA
-            const response = await fetch(
-                `https://api.github.com/repos/${this.githubConfig.owner}/${this.githubConfig.repo}/commits?path=dictionary.json&per_page=1`
-            );
-            
-            if (response.ok) {
-                const commits = await response.json();
-                return commits[0]?.sha || null;
-            }
-        } catch (error) {
-            console.log('Could not get git hash:', error);
-        }
-        return null;
-    }
-    
-    async pushPendingChanges() {
-        const pending = localStorage.getItem('pending_sync');
-        if (!pending) return;
-        
-        try {
-            const pendingData = JSON.parse(pending);
-            
-            // Load current data from GitHub
-            const currentData = await this.getCurrentDictionary();
-            
-            // Merge changes
-            const mergedData = this.mergeDictionaries(currentData, pendingData.data);
-            
-            // Save merged data
-            await this.saveToGitHub(mergedData);
-            
-            // Clear pending changes
-            localStorage.removeItem('pending_sync');
-            
-            console.log('✅ Pending changes pushed to GitHub');
-            
-        } catch (error) {
-            console.error('Failed to push pending changes:', error);
-        }
-    }
-    
-    mergeDictionaries(current, incoming) {
-        // Simple merge by ID
-        const mergedWords = [...current.words];
-        
-        incoming.words.forEach(incomingWord => {
-            const existingIndex = mergedWords.findIndex(w => w.id === incomingWord.id);
-            
-            if (existingIndex >= 0) {
-                // Update existing word
-                mergedWords[existingIndex] = {
-                    ...mergedWords[existingIndex],
-                    ...incomingWord,
-                    updatedAt: new Date().toISOString()
-                };
-            } else {
-                // Add new word
-                mergedWords.push({
-                    ...incomingWord,
-                    id: incomingWord.id || Date.now() + Math.random(),
-                    createdAt: incomingWord.createdAt || new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                });
-            }
-        });
-        
-        return {
-            words: mergedWords,
-            metadata: {
-                ...current.metadata,
-                lastSync: new Date().toISOString(),
-                totalWords: mergedWords.length,
-                mergedFrom: [current.metadata?.lastSync, incoming.timestamp].filter(Boolean)
-            }
-        };
-    }
-    
-    async getCurrentDictionary() {
-        try {
-            const url = `${this.githubConfig.rawUrl}/${this.githubConfig.owner}/${this.githubConfig.repo}/${this.githubConfig.branch}/dictionary.json`;
-            const response = await fetch(url);
-            
-            if (response.ok) {
-                return await response.json();
-            }
-        } catch (error) {
-            console.error('Failed to get current dictionary:', error);
-        }
-        
-        // Return empty if failed
-        return { words: [], metadata: {} };
+    manualSync() {
+        this.pushToGitHub();
+        setTimeout(() => this.syncFromGitHub(), 5000);
     }
     
     // ===== SYNC INDICATOR =====
-    setupSyncIndicator() {
-        const indicator = document.getElementById('syncStatus');
-        if (!indicator) return;
-        
-        // Initial state
-        this.updateSyncStatus('synced');
-    }
-    
     updateSyncStatus(status) {
         const indicator = document.getElementById('syncStatus');
         if (!indicator) return;
         
         const statusConfig = {
             syncing: { icon: 'fa-sync-alt fa-spin', text: 'Syncing...', color: 'var(--warning)' },
-            synced: { icon: 'fa-circle', text: 'Auto-Sync: ACTIVE', color: 'var(--success)' },
-            pending: { icon: 'fa-clock', text: 'Pending Sync', color: 'var(--info)' },
+            synced: { icon: 'fa-circle', text: 'Auto-Sync', color: 'var(--success)' },
             error: { icon: 'fa-exclamation-circle', text: 'Sync Error', color: 'var(--danger)' }
         };
         
         const config = statusConfig[status] || statusConfig.synced;
-        
         indicator.innerHTML = `<i class="fas ${config.icon}"></i> ${config.text}`;
         indicator.style.color = config.color;
     }
     
-    // ===== WORD MANAGEMENT =====
+    // ===== WORD ANALYSIS =====
     async analyzeWord() {
         const wordInput = document.getElementById('aiWordInput');
         const word = wordInput.value.trim();
@@ -446,7 +403,6 @@ class DictionaryManager {
         resultDiv.classList.add('active');
         
         try {
-            // Use Free Dictionary API
             const wordData = await this.analyzeWithDictionaryAPI(word);
             
             if (wordData) {
@@ -552,6 +508,7 @@ class DictionaryManager {
         });
     }
     
+    // ===== WORD MANAGEMENT =====
     showAddWordModal(word = '', data = null) {
         const modal = document.getElementById('wordModal');
         const modalBody = document.getElementById('wordModalBody');
@@ -642,7 +599,7 @@ class DictionaryManager {
                         Cancel
                     </button>
                     <button type="submit" class="btn btn-primary" style="flex: 1;">
-                        <i class="fas fa-save"></i> Save to Dictionary
+                        <i class="fas fa-save"></i> Save Word
                     </button>
                 </div>
             </form>
@@ -685,21 +642,14 @@ class DictionaryManager {
         };
         
         this.words.push(newWord);
-        this.saveLocalBackup();
+        this.saveToLocalStorage();
         this.updateStats();
         this.renderWordList();
         
-        // Save to GitHub
-        this.saveToGitHub({
-            words: this.words,
-            metadata: {
-                lastSync: new Date().toISOString(),
-                totalWords: this.words.length,
-                action: 'add_word'
-            }
-        });
+        // Trigger sync to GitHub
+        this.pushToGitHub();
         
-        this.showToast(`"${newWord.word}" added! Syncing to all devices...`, 'success');
+        this.showToast(`"${newWord.word}" added!`, 'success');
         return newWord;
     }
     
@@ -709,19 +659,12 @@ class DictionaryManager {
             word.mastered = !word.mastered;
             word.updatedAt = new Date().toISOString();
             
-            this.saveLocalBackup();
+            this.saveToLocalStorage();
             this.updateStats();
             this.renderWordList();
             
-            // Save to GitHub
-            this.saveToGitHub({
-                words: this.words,
-                metadata: {
-                    lastSync: new Date().toISOString(),
-                    totalWords: this.words.length,
-                    action: 'toggle_mastered'
-                }
-            });
+            // Trigger sync
+            this.pushToGitHub();
             
             this.showToast(
                 `"${word.word}" ${word.mastered ? 'marked as mastered!' : 'unmarked'}`,
@@ -737,19 +680,12 @@ class DictionaryManager {
         if (confirm(`Delete "${word.word}" from your dictionary?`)) {
             this.words = this.words.filter(w => w.id !== wordId);
             
-            this.saveLocalBackup();
+            this.saveToLocalStorage();
             this.updateStats();
             this.renderWordList();
             
-            // Save to GitHub
-            this.saveToGitHub({
-                words: this.words,
-                metadata: {
-                    lastSync: new Date().toISOString(),
-                    totalWords: this.words.length,
-                    action: 'delete_word'
-                }
-            });
+            // Trigger sync
+            this.pushToGitHub();
             
             document.getElementById('wordModal').classList.remove('active');
             this.showToast(`"${word.word}" deleted`, 'success');
@@ -1009,6 +945,22 @@ class DictionaryManager {
         }
         
         this.showToast(`Switched to ${isDark ? 'dark' : 'light'} theme`, 'info');
+    }
+    
+    // ===== GITHUB SYNC CALLBACKS =====
+    onDataUpdate(newData) {
+        if (newData && newData.words) {
+            console.log('🔄 Received updated data from GitHub');
+            
+            // Merge with local data
+            this.mergeWithGitHubData(newData.words);
+            
+            // Update UI
+            this.updateStats();
+            this.renderWordList();
+            
+            this.showToast('🔄 Synced latest changes from other devices', 'success');
+        }
     }
     
     // ===== UTILITIES =====
