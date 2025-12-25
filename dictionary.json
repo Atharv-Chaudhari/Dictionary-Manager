@@ -1,5 +1,9 @@
 {
   "words": [],
-  "lastSync": "2025-12-25T04:39:44+00:00",
-  "totalWords": 0
+  "metadata": {
+    "lastSync": "2025-12-25T04:53:11+00:00",
+    "source": "LexiAI",
+    "totalWords": 0,
+    "version": "2.0"
+  }
 }
