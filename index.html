@@ -3,110 +3,1121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📚 AI Dictionary Manager</title>
+    <title>🤖 AI Dictionary - Auto Sync</title>
     
     <!-- Fonts & Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Puter.js -->
-    <script src="https://js.puter.com/v2/"></script>
-    
-    <!-- Our Styles -->
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* ===== CSS VARIABLES ===== */
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            
+            --bg-1: #ffffff;
+            --bg-2: #f8fafc;
+            --bg-3: #f1f5f9;
+            --bg-card: #ffffff;
+            
+            --text-1: #1e293b;
+            --text-2: #475569;
+            --text-3: #64748b;
+            
+            --border: #e2e8f0;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            
+            --gradient-primary: linear-gradient(135deg, var(--primary) 0%, #8b5cf6 100%);
+            --gradient-success: linear-gradient(135deg, var(--success) 0%, #34d399 100%);
+        }
+
+        .dark-theme {
+            --bg-1: #0f172a;
+            --bg-2: #1e293b;
+            --bg-3: #334155;
+            --bg-card: #1e293b;
+            
+            --text-1: #f8fafc;
+            --text-2: #e2e8f0;
+            --text-3: #cbd5e1;
+            
+            --border: #475569;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ===== RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-1);
+            color: var(--text-1);
+            line-height: 1.6;
+            min-height: 100vh;
+            transition: all 0.3s ease;
+        }
+
+        /* ===== APP CONTAINER ===== */
+        .app-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0;
+            margin-bottom: 32px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient-primary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+        }
+
+        .logo-text h1 {
+            font-size: 28px;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-text p {
+            color: var(--text-3);
+            font-size: 14px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-3);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-2);
+        }
+
+        .sync-status.active {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--border);
+            color: var(--text-2);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        /* ===== MAIN LAYOUT ===== */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 32px;
+            min-height: calc(100vh - 160px);
+        }
+
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* AI Panel */
+        .ai-panel {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow);
+        }
+
+        .ai-panel h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-1);
+        }
+
+        .ai-input-container {
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .ai-input {
+            width: 100%;
+            padding: 14px 20px 14px 48px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-2);
+            color: var(--text-1);
+            font-size: 15px;
+            transition: all 0.2s;
+        }
+
+        .ai-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .ai-input-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-3);
+        }
+
+        .ai-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* AI Result */
+        .ai-result {
+            background: var(--bg-2);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid var(--border);
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ai-result.active {
+            display: block;
+        }
+
+        .ai-word-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .ai-word-title {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text-1);
+        }
+
+        .ai-word-meta {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .ai-definition {
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-2);
+            margin-bottom: 20px;
+            padding-left: 16px;
+            border-left: 4px solid var(--primary);
+        }
+
+        .ai-examples {
+            background: var(--bg-3);
+            padding: 16px;
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+        }
+
+        .ai-examples h4 {
+            font-size: 14px;
+            color: var(--text-3);
+            margin-bottom: 12px;
+        }
+
+        .ai-examples ul {
+            padding-left: 20px;
+        }
+
+        .ai-examples li {
+            margin-bottom: 8px;
+            color: var(--text-2);
+            font-style: italic;
+        }
+
+        .ai-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .ai-tag {
+            padding: 6px 12px;
+            background: var(--bg-3);
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-2);
+        }
+
+        .ai-tag.synonym {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+        }
+
+        .ai-tag.antonym {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .stat-icon.total { background: rgba(99, 102, 241, 0.1); color: var(--primary); }
+        .stat-icon.mastered { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .stat-icon.recent { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+        .stat-icon.difficult { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+
+        .stat-content h3 {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .stat-content p {
+            font-size: 13px;
+            color: var(--text-3);
+        }
+
+        /* Filters */
+        .filters {
+            background: var(--bg-card);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .filters h4 {
+            font-size: 14px;
+            color: var(--text-3);
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .filter-btn {
+            padding: 12px 16px;
+            border: 2px solid var(--border);
+            background: var(--bg-2);
+            border-radius: var(--radius-md);
+            color: var(--text-2);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+            text-align: left;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--primary-light);
+            color: var(--text-1);
+        }
+
+        .filter-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        /* Content Header */
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-card);
+            padding: 20px 24px;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+        }
+
+        .content-header h2 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .content-header p {
+            color: var(--text-3);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .content-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Search */
+        .search-container {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 20px 12px 44px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-2);
+            color: var(--text-1);
+            font-size: 14px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-3);
+        }
+
+        /* Words Grid */
+        .words-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        /* Word Card */
+        .word-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .word-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary);
+        }
+
+        .word-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--gradient-primary);
+        }
+
+        .word-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .word-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-1);
+        }
+
+        .word-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-easy { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .badge-medium { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .badge-hard { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .badge-mastered { background: rgba(59, 130, 246, 0.1); color: var(--info); }
+
+        .word-definition {
+            color: var(--text-2);
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .word-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .word-meta {
+            display: flex;
+            gap: 12px;
+        }
+
+        .word-tag {
+            padding: 4px 12px;
+            background: var(--bg-3);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        .word-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px 40px;
+            text-align: center;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 2px dashed var(--border);
+        }
+
+        .empty-state.active {
+            display: flex;
+        }
+
+        .empty-state i {
+            font-size: 64px;
+            color: var(--text-3);
+            margin-bottom: 24px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-1);
+        }
+
+        .empty-state p {
+            color: var(--text-3);
+            margin-bottom: 32px;
+            max-width: 400px;
+        }
+
+        /* ===== MODALS ===== */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            padding: 28px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .modal-close {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--bg-3);
+            border: none;
+            color: var(--text-3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .modal-body {
+            padding: 32px;
+            overflow-y: auto;
+            max-height: 60vh;
+        }
+
+        /* Word Detail Modal */
+        .word-detail {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 32px;
+        }
+
+        .word-main {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .word-title-large {
+            font-size: 42px;
+            font-weight: 800;
+            color: var(--text-1);
+        }
+
+        .word-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .meta-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-3);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+        }
+
+        .meta-content h4 {
+            font-size: 12px;
+            color: var(--text-3);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .meta-content p {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-1);
+        }
+
+        .definition-box {
+            background: var(--bg-2);
+            padding: 24px;
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--primary);
+        }
+
+        .definition-box h3 {
+            font-size: 16px;
+            color: var(--text-3);
+            margin-bottom: 12px;
+        }
+
+        .definition-content {
+            font-size: 18px;
+            line-height: 1.6;
+            color: var(--text-1);
+        }
+
+        .word-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .examples-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .example-item {
+            padding: 16px;
+            background: var(--bg-2);
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--success);
+            font-style: italic;
+        }
+
+        .synonyms-antonyms {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        /* ===== TOAST NOTIFICATIONS ===== */
+        .toast-container {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            min-width: 300px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--success);
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--danger);
+        }
+
+        .toast.info {
+            border-left: 4px solid var(--info);
+        }
+
+        /* ===== RESPONSIVE DESIGN ===== */
+        @media (max-width: 1200px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                order: 2;
+            }
+            
+            .words-grid {
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                padding: 16px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+            
+            .content-header {
+                flex-direction: column;
+                gap: 16px;
+                align-items: stretch;
+            }
+            
+            .search-container {
+                width: 100%;
+            }
+            
+            .words-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .word-detail {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
-    <!-- Main App -->
+    <!-- App Container -->
     <div class="app-container">
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <i class="fas fa-brain"></i>
-                <div>
+                <div class="logo-icon">
+                    <i class="fas fa-brain"></i>
+                </div>
+                <div class="logo-text">
                     <h1>AI Dictionary</h1>
-                    <p>Smart vocabulary manager</p>
+                    <p>Auto-sync to GitHub • Powered by AI</p>
                 </div>
             </div>
+            
             <div class="header-actions">
-                <button class="btn" id="themeToggle">
-                    <i class="fas fa-moon"></i>
+                <div class="sync-status active" id="syncStatus">
+                    <i class="fas fa-circle"></i>
+                    Auto-Sync: ACTIVE
+                </div>
+                <button class="btn btn-outline" id="themeToggle">
+                    <i class="fas fa-moon"></i> Theme
                 </button>
-                <button class="btn btn-primary" id="syncBtn">
-                    <i class="fas fa-sync-alt"></i> Sync
-                </button>
+                <a href="https://github.com/Atharv-Chaudhari/Dictionary-Manager" target="_blank" class="btn btn-outline">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
             </div>
         </header>
 
         <!-- Main Layout -->
         <div class="main-layout">
             <!-- Sidebar -->
-            <div class="sidebar">
+            <aside class="sidebar">
                 <!-- AI Assistant -->
-                <div class="ai-assistant">
-                    <h3><i class="fas fa-robot"></i> AI Assistant</h3>
-                    <div class="ai-input">
-                        <input type="text" id="aiWordInput" placeholder="Enter a word...">
+                <div class="ai-panel">
+                    <h3><i class="fas fa-robot"></i> AI Word Assistant</h3>
+                    <div class="ai-input-container">
+                        <i class="fas fa-search ai-input-icon"></i>
+                        <input type="text" class="ai-input" id="aiWordInput" placeholder="Enter any word...">
+                    </div>
+                    <div class="ai-actions">
                         <button class="btn btn-primary" id="aiAnalyzeBtn">
-                            <i class="fas fa-search"></i>
+                            <i class="fas fa-magic"></i> AI Analyze
+                        </button>
+                        <button class="btn btn-outline" id="manualAddBtn">
+                            <i class="fas fa-plus"></i> Manual Add
                         </button>
                     </div>
+                    
                     <div class="ai-result" id="aiResult">
                         <!-- AI results will appear here -->
                     </div>
                 </div>
 
                 <!-- Stats -->
-                <div class="stats">
+                <div class="stats-grid">
                     <div class="stat-card">
-                        <i class="fas fa-font"></i>
-                        <div>
+                        <div class="stat-icon total">
+                            <i class="fas fa-font"></i>
+                        </div>
+                        <div class="stat-content">
                             <h3 id="totalWords">0</h3>
                             <p>Total Words</p>
                         </div>
                     </div>
                     <div class="stat-card">
-                        <i class="fas fa-star"></i>
-                        <div>
+                        <div class="stat-icon mastered">
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <div class="stat-content">
                             <h3 id="masteredWords">0</h3>
                             <p>Mastered</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon recent">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="recentWords">0</h3>
+                            <p>This Week</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon difficult">
+                            <i class="fas fa-fire"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="difficultWords">0</h3>
+                            <p>Difficult</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Filters -->
                 <div class="filters">
-                    <button class="filter-btn active" data-filter="all">All Words</button>
-                    <button class="filter-btn" data-filter="learning">Learning</button>
-                    <button class="filter-btn" data-filter="mastered">Mastered</button>
+                    <h4><i class="fas fa-filter"></i> Filter Words</h4>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">
+                            <i class="fas fa-layer-group"></i> All Words
+                        </button>
+                        <button class="filter-btn" data-filter="mastered">
+                            <i class="fas fa-star"></i> Mastered
+                        </button>
+                        <button class="filter-btn" data-filter="learning">
+                            <i class="fas fa-book-open"></i> Learning
+                        </button>
+                        <button class="filter-btn" data-filter="difficult">
+                            <i class="fas fa-fire"></i> Difficult
+                        </button>
+                        <button class="filter-btn" data-filter="recent">
+                            <i class="fas fa-clock"></i> Recent
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </aside>
 
             <!-- Main Content -->
-            <div class="content">
-                <!-- Search -->
-                <div class="search-box">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="searchInput" placeholder="Search words...">
-                    <button class="btn btn-primary" id="addWordBtn">
-                        <i class="fas fa-plus"></i> Add Word
-                    </button>
+            <main class="main-content">
+                <!-- Content Header -->
+                <div class="content-header">
+                    <div>
+                        <h2>My Dictionary</h2>
+                        <p>All your words automatically saved to GitHub</p>
+                    </div>
+                    <div class="content-actions">
+                        <div class="search-container">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" class="search-input" id="searchInput" placeholder="Search words...">
+                        </div>
+                        <button class="btn btn-success" id="exportBtn">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Words Grid -->
                 <div class="words-grid" id="wordsGrid">
-                    <!-- Words will appear here -->
+                    <!-- Words will be dynamically loaded here -->
                 </div>
 
                 <!-- Empty State -->
                 <div class="empty-state" id="emptyState">
                     <i class="fas fa-book-open"></i>
-                    <h2>No words yet</h2>
-                    <p>Use the AI assistant to add your first word!</p>
-                    <button class="btn btn-primary" id="tryAI">
-                        <i class="fas fa-magic"></i> Try AI Assistant
-                    </button>
+                    <h3>Your dictionary is empty</h3>
+                    <p>Use the AI assistant to analyze words or manually add words to start building your vocabulary.</p>
+                    <div style="display: flex; gap: 12px;">
+                        <button class="btn btn-primary" id="startAI">
+                            <i class="fas fa-magic"></i> Try AI Assistant
+                        </button>
+                        <button class="btn btn-outline" id="addFirstWord">
+                            <i class="fas fa-plus"></i> Add First Word
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </main>
         </div>
     </div>
 
@@ -114,515 +1125,19 @@
     <div class="modal" id="wordModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modalTitle">Word Details</h2>
-                <button class="close-btn">&times;</button>
+                <h2><i class="fas fa-book"></i> Word Details</h2>
+                <button class="modal-close">&times;</button>
             </div>
-            <div class="modal-body" id="modalBody">
-                <!-- Word details will appear here -->
+            <div class="modal-body" id="wordModalBody">
+                <!-- Word details will be loaded here -->
             </div>
         </div>
     </div>
 
-    <!-- Toast Notifications -->
-    <div id="toastContainer"></div>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
 
-    <!-- Our JavaScript -->
-    <script>
-        // Dictionary Manager Class
-        class DictionaryManager {
-            constructor() {
-                this.words = [];
-                this.puter = null;
-                this.init();
-            }
-
-            async init() {
-                this.loadWords();
-                this.setupUI();
-                this.setupPuter();
-                this.renderWords();
-                this.updateStats();
-            }
-
-            async setupPuter() {
-                try {
-                    this.puter = window.puter;
-                    await this.puter.auth.getUser();
-                    console.log('✅ Puter.js connected');
-                    this.showToast('AI Assistant ready!', 'success');
-                } catch (error) {
-                    console.log('⚠️ Puter.js not available');
-                    this.showToast('Using offline mode', 'info');
-                }
-            }
-
-            setupUI() {
-                // Theme toggle
-                document.getElementById('themeToggle').addEventListener('click', () => {
-                    document.body.classList.toggle('dark-theme');
-                });
-
-                // AI analyze
-                document.getElementById('aiAnalyzeBtn').addEventListener('click', () => {
-                    const word = document.getElementById('aiWordInput').value.trim();
-                    if (word) this.analyzeWord(word);
-                });
-
-                document.getElementById('aiWordInput').addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        const word = e.target.value.trim();
-                        if (word) this.analyzeWord(word);
-                    }
-                });
-
-                // Try AI button
-                document.getElementById('tryAI').addEventListener('click', () => {
-                    document.getElementById('aiWordInput').focus();
-                });
-
-                // Add word button
-                document.getElementById('addWordBtn').addEventListener('click', () => {
-                    this.showAddWordModal();
-                });
-
-                // Sync button
-                document.getElementById('syncBtn').addEventListener('click', () => {
-                    this.syncToGitHub();
-                });
-
-                // Search
-                document.getElementById('searchInput').addEventListener('input', (e) => {
-                    this.renderWords(e.target.value);
-                });
-
-                // Filters
-                document.querySelectorAll('.filter-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                        e.target.classList.add('active');
-                        this.renderWords();
-                    });
-                });
-
-                // Modal close
-                document.querySelector('.close-btn').addEventListener('click', () => {
-                    document.getElementById('wordModal').classList.remove('active');
-                });
-
-                // Close modal on backdrop click
-                document.getElementById('wordModal').addEventListener('click', (e) => {
-                    if (e.target.id === 'wordModal') {
-                        e.target.classList.remove('active');
-                    }
-                });
-            }
-
-            async analyzeWord(word) {
-                if (!this.puter) {
-                    this.showToast('Puter.js not available. Add word manually.', 'error');
-                    this.showAddWordModal(word);
-                    return;
-                }
-
-                try {
-                    this.showToast(`Analyzing "${word}"...`, 'info');
-                    
-                    const response = await this.puter.ai.chat({
-                        messages: [{
-                            role: 'system',
-                            content: `You are a dictionary expert. For the word "${word}", provide:
-                            {
-                                "word": "${word}",
-                                "definition": "clear definition",
-                                "partOfSpeech": "noun/verb/etc",
-                                "pronunciation": "/phonetics/",
-                                "examples": ["example 1", "example 2", "example 3"],
-                                "synonyms": ["syn1", "syn2", "syn3"],
-                                "antonyms": ["ant1", "ant2"],
-                                "difficulty": "easy/medium/difficult"
-                            }`
-                        }],
-                        model: 'gpt-3.5-turbo'
-                    });
-
-                    const aiText = response.choices[0].message.content;
-                    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
-                    
-                    if (jsonMatch) {
-                        const wordData = JSON.parse(jsonMatch[0]);
-                        this.showAIResult(wordData);
-                    } else {
-                        throw new Error('No JSON found');
-                    }
-
-                } catch (error) {
-                    console.error('AI error:', error);
-                    this.showToast('AI analysis failed. Add manually.', 'error');
-                    this.showAddWordModal(word);
-                }
-            }
-
-            showAIResult(wordData) {
-                const resultDiv = document.getElementById('aiResult');
-                
-                resultDiv.innerHTML = `
-                    <div class="ai-word-result">
-                        <h4>${wordData.word} <small>(${wordData.partOfSpeech})</small></h4>
-                        <p><strong>Definition:</strong> ${wordData.definition}</p>
-                        <p><strong>Pronunciation:</strong> ${wordData.pronunciation}</p>
-                        
-                        <div class="ai-actions">
-                            <button class="btn btn-success" id="saveAIWord">
-                                <i class="fas fa-save"></i> Save to Dictionary
-                            </button>
-                            <button class="btn" id="editAIWord">
-                                <i class="fas fa-edit"></i> Edit First
-                            </button>
-                        </div>
-                    </div>
-                `;
-
-                // Save button
-                document.getElementById('saveAIWord').addEventListener('click', () => {
-                    this.addWord(wordData);
-                    resultDiv.innerHTML = '';
-                    document.getElementById('aiWordInput').value = '';
-                });
-
-                // Edit button
-                document.getElementById('editAIWord').addEventListener('click', () => {
-                    this.showAddWordModal(wordData.word, wordData);
-                    resultDiv.innerHTML = '';
-                });
-            }
-
-            showAddWordModal(word = '', data = null) {
-                document.getElementById('modalTitle').textContent = data ? 'Edit Word' : 'Add New Word';
-                
-                const modalBody = document.getElementById('modalBody');
-                modalBody.innerHTML = `
-                    <form id="wordForm">
-                        <div class="form-group">
-                            <label>Word *</label>
-                            <input type="text" id="formWord" value="${word}" required>
-                        </div>
-                        <div class="form-group">
-                            <label>Definition *</label>
-                            <textarea id="formDefinition" rows="3" required>${data?.definition || ''}</textarea>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Part of Speech</label>
-                                <select id="formPartOfSpeech">
-                                    <option ${data?.partOfSpeech === 'noun' ? 'selected' : ''}>noun</option>
-                                    <option ${data?.partOfSpeech === 'verb' ? 'selected' : ''}>verb</option>
-                                    <option ${data?.partOfSpeech === 'adjective' ? 'selected' : ''}>adjective</option>
-                                    <option ${data?.partOfSpeech === 'adverb' ? 'selected' : ''}>adverb</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Difficulty</label>
-                                <select id="formDifficulty">
-                                    <option ${data?.difficulty === 'easy' ? 'selected' : ''}>easy</option>
-                                    <option ${data?.difficulty === 'medium' || !data ? 'selected' : ''}>medium</option>
-                                    <option ${data?.difficulty === 'difficult' ? 'selected' : ''}>difficult</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn" id="cancelForm">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Save Word</button>
-                        </div>
-                    </form>
-                `;
-
-                // Form submission
-                const form = document.getElementById('wordForm');
-                form.onsubmit = (e) => {
-                    e.preventDefault();
-                    this.saveWordFromForm();
-                };
-
-                // Cancel button
-                document.getElementById('cancelForm').addEventListener('click', () => {
-                    document.getElementById('wordModal').classList.remove('active');
-                });
-
-                // Show modal
-                document.getElementById('wordModal').classList.add('active');
-                document.getElementById('formWord').focus();
-            }
-
-            saveWordFromForm() {
-                const wordData = {
-                    word: document.getElementById('formWord').value.trim(),
-                    definition: document.getElementById('formDefinition').value.trim(),
-                    partOfSpeech: document.getElementById('formPartOfSpeech').value,
-                    difficulty: document.getElementById('formDifficulty').value,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    mastered: false
-                };
-
-                this.addWord(wordData);
-                document.getElementById('wordModal').classList.remove('active');
-            }
-
-            addWord(wordData) {
-                const word = {
-                    id: Date.now(),
-                    ...wordData,
-                    examples: wordData.examples || [],
-                    synonyms: wordData.synonyms || [],
-                    antonyms: wordData.antonyms || [],
-                    pronunciation: wordData.pronunciation || '',
-                    source: wordData.source || 'Manual'
-                };
-
-                this.words.push(word);
-                this.saveWords();
-                this.renderWords();
-                this.updateStats();
-                
-                this.showToast(`"${word.word}" added successfully!`, 'success');
-                return word;
-            }
-
-            loadWords() {
-                try {
-                    const saved = localStorage.getItem('dictionary_words');
-                    this.words = saved ? JSON.parse(saved) : [];
-                    
-                    // Add sample if empty
-                    if (this.words.length === 0) {
-                        this.words = [{
-                            id: 1,
-                            word: 'Serendipity',
-                            definition: 'The occurrence of events by chance in a happy way',
-                            partOfSpeech: 'noun',
-                            pronunciation: '/ˌserənˈdɪpəti/',
-                            difficulty: 'medium',
-                            mastered: false,
-                            createdAt: new Date().toISOString()
-                        }];
-                        this.saveWords();
-                    }
-                } catch (error) {
-                    this.words = [];
-                }
-            }
-
-            saveWords() {
-                localStorage.setItem('dictionary_words', JSON.stringify(this.words));
-            }
-
-            renderWords(search = '') {
-                const grid = document.getElementById('wordsGrid');
-                const emptyState = document.getElementById('emptyState');
-                const filter = document.querySelector('.filter-btn.active').dataset.filter;
-                
-                // Filter words
-                let filtered = this.words.filter(word => {
-                    if (search && !word.word.toLowerCase().includes(search.toLowerCase()) && 
-                        !word.definition.toLowerCase().includes(search.toLowerCase())) {
-                        return false;
-                    }
-                    
-                    if (filter === 'learning' && word.mastered) return false;
-                    if (filter === 'mastered' && !word.mastered) return false;
-                    
-                    return true;
-                });
-
-                // Sort alphabetically
-                filtered.sort((a, b) => a.word.localeCompare(b.word));
-
-                // Show/hide empty state
-                if (filtered.length === 0) {
-                    grid.innerHTML = '';
-                    emptyState.style.display = 'flex';
-                    return;
-                }
-
-                emptyState.style.display = 'none';
-
-                // Render words
-                grid.innerHTML = filtered.map(word => `
-                    <div class="word-card" data-id="${word.id}">
-                        <div class="word-header">
-                            <h3>${word.word}</h3>
-                            <span class="word-badge ${word.difficulty}">${word.difficulty}</span>
-                        </div>
-                        <p class="word-definition">${word.definition}</p>
-                        <div class="word-footer">
-                            <span class="word-tag">${word.partOfSpeech}</span>
-                            <div class="word-actions">
-                                <button class="icon-btn" onclick="dictionary.toggleMastered(${word.id})" title="${word.mastered ? 'Unmark mastered' : 'Mark mastered'}">
-                                    <i class="fas ${word.mastered ? 'fa-star' : 'fa-star'}"></i>
-                                </button>
-                                <button class="icon-btn" onclick="dictionary.deleteWord(${word.id})" title="Delete">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-
-                // Add click event to view word
-                document.querySelectorAll('.word-card').forEach(card => {
-                    card.addEventListener('click', (e) => {
-                        if (!e.target.closest('.word-actions')) {
-                            const id = parseInt(card.dataset.id);
-                            this.viewWord(id);
-                        }
-                    });
-                });
-            }
-
-            viewWord(id) {
-                const word = this.words.find(w => w.id === id);
-                if (!word) return;
-
-                document.getElementById('modalTitle').textContent = word.word;
-                
-                document.getElementById('modalBody').innerHTML = `
-                    <div class="word-detail">
-                        <div class="word-meta">
-                            <span class="tag">${word.partOfSpeech}</span>
-                            <span class="tag ${word.difficulty}">${word.difficulty}</span>
-                            <span class="tag ${word.mastered ? 'mastered' : ''}">
-                                ${word.mastered ? 'Mastered' : 'Learning'}
-                            </span>
-                        </div>
-                        
-                        <div class="definition">
-                            <h4>Definition</h4>
-                            <p>${word.definition}</p>
-                        </div>
-                        
-                        ${word.pronunciation ? `
-                        <div class="pronunciation">
-                            <h4>Pronunciation</h4>
-                            <p>${word.pronunciation}</p>
-                        </div>` : ''}
-                        
-                        ${word.examples?.length > 0 ? `
-                        <div class="examples">
-                            <h4>Examples</h4>
-                            <ul>${word.examples.map(ex => `<li>${ex}</li>`).join('')}</ul>
-                        </div>` : ''}
-                        
-                        ${word.synonyms?.length > 0 ? `
-                        <div class="synonyms">
-                            <h4>Synonyms</h4>
-                            <div class="tags">${word.synonyms.map(s => `<span class="tag">${s}</span>`).join('')}</div>
-                        </div>` : ''}
-                        
-                        <div class="detail-actions">
-                            <button class="btn" onclick="dictionary.toggleMastered(${word.id})">
-                                <i class="fas fa-star"></i> ${word.mastered ? 'Unmark Mastered' : 'Mark as Mastered'}
-                            </button>
-                            <button class="btn btn-danger" onclick="dictionary.deleteWord(${word.id})">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                        </div>
-                    </div>
-                `;
-
-                document.getElementById('wordModal').classList.add('active');
-            }
-
-            toggleMastered(id) {
-                const word = this.words.find(w => w.id === id);
-                if (word) {
-                    word.mastered = !word.mastered;
-                    word.updatedAt = new Date().toISOString();
-                    this.saveWords();
-                    this.renderWords();
-                    this.updateStats();
-                    
-                    this.showToast(
-                        `"${word.word}" ${word.mastered ? 'marked as mastered!' : 'unmarked from mastered'}`,
-                        'success'
-                    );
-                }
-            }
-
-            deleteWord(id) {
-                const word = this.words.find(w => w.id === id);
-                if (!word) return;
-
-                if (confirm(`Delete "${word.word}"?`)) {
-                    this.words = this.words.filter(w => w.id !== id);
-                    this.saveWords();
-                    this.renderWords();
-                    this.updateStats();
-                    
-                    this.showToast(`"${word.word}" deleted`, 'success');
-                    document.getElementById('wordModal').classList.remove('active');
-                }
-            }
-
-            updateStats() {
-                document.getElementById('totalWords').textContent = this.words.length;
-                
-                const mastered = this.words.filter(w => w.mastered).length;
-                document.getElementById('masteredWords').textContent = mastered;
-            }
-
-            async syncToGitHub() {
-                try {
-                    this.showToast('Syncing to GitHub...', 'info');
-                    
-                    const data = {
-                        words: this.words,
-                        lastSync: new Date().toISOString(),
-                        totalWords: this.words.length
-                    };
-
-                    // Create GitHub issue URL
-                    const issueUrl = `https://github.com/Atharv-Chaudhari/Dictionary-Manager/issues/new?` +
-                        `title=[DICT-SYNC] ${new Date().toLocaleDateString()}&` +
-                        `body=\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\`&` +
-                        `labels=dictionary,sync`;
-
-                    // Open in new tab
-                    window.open(issueUrl, '_blank');
-                    
-                    this.showToast('GitHub sync initiated!', 'success');
-                    
-                } catch (error) {
-                    this.showToast('Sync failed: ' + error.message, 'error');
-                }
-            }
-
-            showToast(message, type = 'info') {
-                const container = document.getElementById('toastContainer');
-                const toast = document.createElement('div');
-                toast.className = `toast ${type}`;
-                
-                const icons = {
-                    success: 'fas fa-check-circle',
-                    error: 'fas fa-exclamation-circle',
-                    info: 'fas fa-info-circle'
-                };
-                
-                toast.innerHTML = `
-                    <i class="${icons[type]}"></i>
-                    <span>${message}</span>
-                `;
-                
-                container.appendChild(toast);
-                
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    setTimeout(() => toast.remove(), 300);
-                }, 3000);
-            }
-        }
-
-        // Initialize the app
-        window.dictionary = new DictionaryManager();
-    </script>
+    <!-- JavaScript -->
+    <script src="script.js"></script>
 </body>
 </html>
