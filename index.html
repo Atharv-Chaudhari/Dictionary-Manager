@@ -961,6 +961,22 @@
             }
         }
     </style>
+    <!-- Add sync status script -->
+    <script>
+    // Auto-check for updates
+    setInterval(() => {
+        if (window.dictionary && !window.dictionary.isSyncing) {
+            window.dictionary.checkForUpdates();
+        }
+    }, 30000); // Every 30 seconds
+
+    // Check for updates when page becomes visible
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && window.dictionary) {
+            window.dictionary.checkForUpdates();
+        }
+    });
+    </script>
 </head>
 <body>
     <!-- App Container -->
